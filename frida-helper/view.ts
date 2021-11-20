@@ -1,20 +1,25 @@
-
 import * as util from "./util"
+import * as CM from './class-manager'
 
-let ViewGroup:Java.Wrapper;
-let View:Java.Wrapper;
-let ActivityThread:Java.Wrapper;
-let ViewRootImpl:Java.Wrapper;
-let ViewRootImpl_W:Java.Wrapper;
-let TextView:Java.Wrapper;
-let ActivityClientRecord:Java.Wrapper;
-let Resources:Java.Wrapper;
-let ARect: Java.Wrapper;
-let ARectF: Java.Wrapper;
-let APaint: Java.Wrapper;
-let APaintStyle: Java.Wrapper;
-let AMotionEvent: Java.Wrapper;
 let is_init = false;
+
+const api: CM.ClassSet = {
+    ViewGroup: CM.Stub("android.view.ViewGroup"), 
+    View: CM.Stub("android.view.View"), 
+    ActivityThread: CM.Stub("android.app.ActivityThread"), 
+    ViewRootImpl: CM.Stub("android.view.ViewRootImpl"), 
+    ViewRootImpl_W: CM.Stub("android.view.ViewRootImpl$W"), 
+    TextView: CM.Stub("android.widget.TextView"), 
+    ActivityClientRecord: CM.Stub("android.app.ActivityThread$ActivityClientRecord"), 
+    Resources: CM.Stub("android.content.res.Resources"), 
+    ARect: CM.Stub("android.graphics.Rect"), 
+    ARectF: CM.Stub("android.graphics.RectF"), 
+    APaint: CM.Stub("android.graphics.Paint"), 
+    APaintStyle: CM.Stub("android.graphics.Paint$Style"), 
+    AMotionEvent: CM.Stub("android.view.MotionEvent"), 
+}
+
+CM.register(api);
 
 const VIEW_NO_ID = -1;
 
@@ -86,11 +91,11 @@ function ARectToRect(rect: any): Rect {
 }
 
 function RectToARect(rect: Rect): any {
-    return ARect.$new(rect.left, rect.top, rect.right, rect.bottom);
+    return api.ARect.$new(rect.left, rect.top, rect.right, rect.bottom);
 }
 
 function RectToARectF(rect: Rect): any {
-    return ARectF.$new(rect.left, rect.top, rect.right, rect.bottom);
+    return api.ARectF.$new(rect.left, rect.top, rect.right, rect.bottom);
 }
 
 function arrayToRect([l, t, r, b]: Array<number>): Rect {
@@ -123,20 +128,20 @@ class ViewHook {
     #lastHookedViewClass: any;
 
     constructor() {
-        let paint = APaint.$new();
-        APaint.setColor.overload('int').call(paint, 0xff00ff00);
-        paint.setStyle(APaintStyle.STROKE.value);
+        let paint = api.APaint.$new();
+        api.APaint.setColor.overload('int').call(paint, 0xff00ff00);
+        paint.setStyle(api.APaintStyle.STROKE.value);
         this.mPaint = paint;
     }
 
     #updateDrawHook() {
         if (this.mMarkedViews.size <= 0 && this.mSelectedModeView == null) {
-            View.draw.overload('android.graphics.Canvas').implementation = null;
+            api.View.draw.overload('android.graphics.Canvas').implementation = null;
             this.#isDrawHooked = false;
         } else if (!this.#isDrawHooked) {
             // console.warn('hooked draw');
             const hooker = this;
-            View.draw.overload('android.graphics.Canvas').implementation = function (...args: any) {
+            api.View.draw.overload('android.graphics.Canvas').implementation = function (...args: any) {
                 this.draw(...args);
                 let shouldMark = false, shouldDrawRect = false;
                 if (hooker.mSelectedModeView != null && this.equals(hooker.mSelectedModeView.view)) {
@@ -186,17 +191,17 @@ class ViewHook {
                 if (typeof x != "number" && typeof y != "number") {
                     return true;
                 }
-                if (action == AMotionEvent.ACTION_DOWN.value) {
+                if (action == api.AMotionEvent.ACTION_DOWN.value) {
                     CONSOLE.warn('start selection');
                     hooker.mSelectionRect = {
                         left: x, right: x, top: y, bottom: y
                     };
-                } else if (action == AMotionEvent.ACTION_MOVE.value) {
+                } else if (action == api.AMotionEvent.ACTION_MOVE.value) {
                     if (hooker.mSelectionRect != null) {
                         hooker.mSelectionRect.right = x;
                         hooker.mSelectionRect.bottom = y;
                     }
-                } else if (action == AMotionEvent.ACTION_UP.value) {
+                } else if (action == api.AMotionEvent.ACTION_UP.value) {
                     CONSOLE.warn('end selection');
                     if (hooker.mSelectionRect != null) {
                         hooker.mSelectionRect.right = x;
@@ -253,7 +258,7 @@ class ViewHook {
     }
 
     showBorder(b: boolean) {
-        View.DEBUG_DRAW.value = Boolean(b);
+        api.View.DEBUG_DRAW.value = Boolean(b);
     }
 }
 
@@ -268,20 +273,20 @@ class ViewWrapper {
         if (obj == null) {
             throw new Error("view is null");
         }
-        this.view = Java.cast(obj, View) as any;
+        this.view = Java.cast(obj, api.View) as any;
     }
 
     get id(): number {
-        return View.getId.call(this.view);
+        return api.View.getId.call(this.view);
     }
 
     get resourceId(): ResourceId | null {
         let id: number = this.id;
         if (id != VIEW_NO_ID) {
             let mResources = this.view.mResources.value, pkgName, typeName, entryName;
-            if (id > 0 && Resources.resourceHasPackage(id) && mResources != null) {
+            if (id > 0 && api.Resources.resourceHasPackage(id) && mResources != null) {
                 try {
-                    mResources = Java.cast(mResources, Resources);
+                    mResources = Java.cast(mResources, api.Resources);
                     switch (id & 0xff000000) {
                         case 0x7f000000:
                             pkgName = "app";
@@ -309,15 +314,15 @@ class ViewWrapper {
     }
 
     get text(): string | null {
-        if(TextView.class.isInstance(this.view)) {
-            return TextView.getText.call(this.view).toString();
+        if(api.TextView.class.isInstance(this.view)) {
+            return api.TextView.getText.call(this.view).toString();
         }
         return null;
     }
 
     get isViewGroup(): boolean {
         if (this._is_group == null) {
-            this._is_group = ViewGroup.class.isInstance(this.view);
+            this._is_group = api.ViewGroup.class.isInstance(this.view);
         }
         return this._is_group as boolean;
     }
@@ -330,12 +335,12 @@ class ViewWrapper {
 
     at(i: number): ViewWrapper {
         ViewWrapper._ensureViewGroup(this, "at: ViewGroup needed");
-        return new ViewWrapper(ViewGroup.getChildAt.call(this.view, i));
+        return new ViewWrapper(api.ViewGroup.getChildAt.call(this.view, i));
     }
 
     get count(): number {
         ViewWrapper._ensureViewGroup(this, "count: ViewGroup needed");
-        return ViewGroup.getChildCount.call(this.view);
+        return api.ViewGroup.getChildCount.call(this.view);
     }
 
     get children(): Array<ViewWrapper> {
@@ -349,7 +354,7 @@ class ViewWrapper {
 
     get parent(): ViewWrapper | any {
         let parent = this.view.getParent();
-        if (ViewRootImpl.class.isInstance(parent)) {
+        if (api.ViewRootImpl.class.isInstance(parent)) {
             return parent;
         }
         return new ViewWrapper(this.view.getParent());
@@ -372,7 +377,7 @@ class ViewWrapper {
     }
 
     boundsOnScreen(): Rect {
-        let rect = ARect.$new();
+        let rect = api.ARect.$new();
         this.view.getBoundsOnScreen(rect);
         return ARectToRect(rect);
     };
@@ -511,7 +516,7 @@ class ViewWrapper {
      */
     prepareForHookDraw() {
         Java.scheduleOnMainThread(() => {
-            this.view.setFlags(0, View.PFLAG_SKIP_DRAW.value);
+            this.view.setFlags(0, api.View.PFLAG_SKIP_DRAW.value);
             this.view.invalidate();
         })
     }
@@ -550,19 +555,6 @@ class ViewWrapper {
 class V {
     static _init (){
         // console.log('libview init...');
-        ViewGroup = Java.use("android.view.ViewGroup");
-        View = Java.use("android.view.View");
-        ActivityThread = Java.use("android.app.ActivityThread");
-        ViewRootImpl = Java.use("android.view.ViewRootImpl");
-        ViewRootImpl_W = Java.use("android.view.ViewRootImpl$W");
-        TextView = Java.use("android.widget.TextView");
-        ActivityClientRecord = Java.use("android.app.ActivityThread$ActivityClientRecord");
-        Resources = Java.use("android.content.res.Resources");
-        ARect = Java.use("android.graphics.Rect");
-        ARectF = Java.use("android.graphics.RectF");
-        APaint = Java.use("android.graphics.Paint");
-        APaintStyle = Java.use("android.graphics.Paint$Style");
-        AMotionEvent = Java.use('android.view.MotionEvent');
         /*
         let default_wm = Java.use('android.view.WindowManagerGlobal').sDefaultWindowManager.value,
             mViews = default_wm.mViews.value;
@@ -584,7 +576,7 @@ class V {
     }
 
     static get activityThread(): any {
-        return ActivityThread.currentActivityThread();
+        return api.ActivityThread.currentActivityThread();
     }
 
     static get activities(): any {
@@ -604,14 +596,14 @@ class V {
     }
 
     static getText(view: any) {
-        if(TextView.class.isInstance(view)) {
-            return TextView.getText.call(view).toString();
+        if(api.TextView.class.isInstance(view)) {
+            return api.TextView.getText.call(view).toString();
         }
         return '';
     }
 
     static logViewTree(view:any, cnt=0, lvl=1, maxlvl=0) {
-        let v = Java.cast(view, View);
+        let v = Java.cast(view, api.View);
         console.log(`${'|'.repeat(lvl)}${cnt} ${v.toString()}`)
         let extras = {
             'id': (() => {
@@ -629,8 +621,8 @@ class V {
         }
         if (extlog)
             console.log(`${' '.repeat(lvl)}${extlog}`);
-        if (ViewGroup.class.isInstance(view)) {
-            let group = Java.cast(view, ViewGroup);
+        if (api.ViewGroup.class.isInstance(view)) {
+            let group = Java.cast(view, api.ViewGroup);
             if (maxlvl > 0 && lvl >= maxlvl) {
                 console.log('  '.repeat(lvl) + ` has ${group.getChildCount()} children (max level reached)`)
                 return;
@@ -653,7 +645,7 @@ class V {
 
     static getCurrentActivityRecord() {
         return V.forEachActivities(V.activities, (k: any, v: any) => {
-            let acr = Java.cast(v, ActivityClientRecord);
+            let acr = Java.cast(v, api.ActivityClientRecord);
             if (!acr.paused.value) {
                 return acr;
             }
@@ -707,7 +699,7 @@ class V {
      * @description return initial application
      */
     static get app(): any {
-        return util.castSelf(ActivityThread.currentActivityThread().mInitialApplication.value);
+        return util.castSelf(api.ActivityThread.currentActivityThread().mInitialApplication.value);
     }
 
     static viewHook:ViewHook ;
