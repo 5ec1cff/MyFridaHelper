@@ -134,7 +134,7 @@ class ViewHook {
             View.draw.overload('android.graphics.Canvas').implementation = null;
             this.#isDrawHooked = false;
         } else if (!this.#isDrawHooked) {
-            console.warn('hooked draw');
+            // console.warn('hooked draw');
             const hooker = this;
             View.draw.overload('android.graphics.Canvas').implementation = function (...args: any) {
                 this.draw(...args);
@@ -548,12 +548,6 @@ class ViewWrapper {
 }
 
 class V {
-    static $sDefaultWindowManager = null as any;
-    static $mViews = null as any;
-    static $currentActivityThread = null as any;
-    static $mActivities = null as any;
-    static wmg = null as any;
-    
     static _init (){
         // console.log('libview init...');
         ViewGroup = Java.use("android.view.ViewGroup");
@@ -569,6 +563,7 @@ class V {
         APaint = Java.use("android.graphics.Paint");
         APaintStyle = Java.use("android.graphics.Paint$Style");
         AMotionEvent = Java.use('android.view.MotionEvent');
+        /*
         let default_wm = Java.use('android.view.WindowManagerGlobal').sDefaultWindowManager.value,
             mViews = default_wm.mViews.value;
 
@@ -579,8 +574,21 @@ class V {
         V.$mViews = mViews;
         V.$currentActivityThread = activityThread;
         V.$mActivities = mActivities;
-        V.wmg = default_wm;
+        V.wmg = default_wm;*/
         is_init = true;
+        console.log('libview initialized');
+    }
+
+    static get wmg(): any {
+        return Java.use('android.view.WindowManagerGlobal').sDefaultWindowManager.value;
+    }
+
+    static get activityThread(): any {
+        return ActivityThread.currentActivityThread();
+    }
+
+    static get activities(): any {
+        return V.activityThread.mActivities.value;
     }
 
     static get roots(): any {
@@ -644,7 +652,7 @@ class V {
     }
 
     static getCurrentActivityRecord() {
-        return V.forEachActivities(V.$mActivities, (k: any, v: any) => {
+        return V.forEachActivities(V.activities, (k: any, v: any) => {
             let acr = Java.cast(v, ActivityClientRecord);
             if (!acr.paused.value) {
                 return acr;
@@ -665,23 +673,6 @@ class V {
             return a.getWindow().getDecorView();
         }
         return null;
-    }
-
-    static listAllViews(maxlvl=-1) {
-        let size = V.$mViews.size();
-
-        console.log('dump all views:', size, 'maxlvl=', maxlvl)
-
-        for (let i = 0; i < size; i++) {
-            let view = Java.cast(V.$mViews.get(i), View), windowToken = Java.cast(view.getWindowToken(), ViewRootImpl_W);
-            console.log(view, windowToken.toString());
-            let mViewAncestor = Java.cast(windowToken.mViewAncestor.value.get(), ViewRootImpl);
-            console.log(mViewAncestor.mWindowAttributes.value.toString());
-            V.logViewTree(view, 0, 1, maxlvl);
-            console.log('');
-        }
-
-        console.log('total views:', size)
     }
 
     // new

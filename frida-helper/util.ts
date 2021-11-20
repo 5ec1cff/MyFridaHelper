@@ -1,12 +1,15 @@
 const api = {
     Throwable: null as any,
-    Object: null as any
+    Object: null as any,
+    Thread: null as any
 };
 
+
 function init() {
-    Java.perform(() => {
+    Java.performNow(() => {
         api.Throwable = Java.use('java.lang.Throwable');
         api.Object = Java.use('java.lang.Object');
+        api.Thread = Java.use('java.lang.Thread');
     })
 }
 
@@ -68,6 +71,19 @@ function catchJvmException(runnable: Function, ...args: any) {
     return null;
 }
 
+function getJavaThreads() {
+    return api.Thread.getAllStackTraces().keySet().toArray();
+}
+
+function getMainThread() {
+    let threads = getJavaThreads();
+    for (let thread of threads) {
+        thread = Java.cast(thread, api.Thread);
+        if (thread.getName() == 'main') return thread;
+    }
+    return null;
+}
+
 export {
     init,
     getStackTrace,
@@ -75,5 +91,7 @@ export {
     castSelf,
     isInstance,
     catchJvmException,
-    getClassWrapperFromClassObject
+    getClassWrapperFromClassObject,
+    getJavaThreads,
+    getMainThread
 }

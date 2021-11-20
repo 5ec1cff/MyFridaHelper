@@ -1,7 +1,7 @@
 import * as util from '../frida-helper/util';
 import {LibView, ViewWrapper} from '../frida-helper/view';
 
-Java.perform(() => {
+Java.performNow(() => {
     console.log('loaded')
     util.init();
     let global = new Function('return this')()
@@ -35,5 +35,22 @@ Java.perform(() => {
     global.$ = LibView;
     global.ViewWrapper = ViewWrapper;
     global.cs = global._ = cs;
+
+    // handle my `waiting for debugger` xposed module
+    try {
+        let main = util.getMainThread(), uh = util.castSelf(main.getUncaughtExceptionHandler());
+        if (uh.getClass().getName().match('TheWorld')) {
+            let py = uh.PY();
+            if (py.isWaiting.value == true && py.isWaited.value == false) {
+                console.warn('This app is waiting for us, use `cont()` to continue');
+                global.cont = () => {
+                    py.wake();
+                    global.cont = null;
+                }
+            }
+        }
+    } catch (e) {
+
+    }
 })
 
