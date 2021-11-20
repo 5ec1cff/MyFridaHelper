@@ -1,9 +1,9 @@
 {
-  "name": "frida-agent-example",
+  "name": "frida-helper",
   "version": "1.0.0",
-  "description": "Example Frida agent written in TypeScript",
+  "description": "5ec1cff's Frida Helper (for Android)",
   "private": true,
-  "main": "agent/a.ts",
+  "main": "main/main.ts",
   "scripts": {
     "prepare": "npm run build",
     "build": "frida-compile main/main.ts -o main.js -c",
