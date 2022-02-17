@@ -1,17 +1,13 @@
-const api = {
-    Throwable: null as any,
-    Object: null as any,
-    Thread: null as any
-};
+import * as CM from './class-manager'
 
-
-function init() {
-    Java.performNow(() => {
-        api.Throwable = Java.use('java.lang.Throwable');
-        api.Object = Java.use('java.lang.Object');
-        api.Thread = Java.use('java.lang.Thread');
-    })
+const api: CM.ClassSet = {
+    Object: CM.Stub("java.lang.Object"),
+    Throwable: CM.Stub('java.lang.Throwable'),
+    Array: CM.Stub('java.lang.reflect.Array'),
+    Thread: CM.Stub('java.lang.Thread'),
 }
+
+CM.register(api);
 
 function getStackTrace() {
     if (api.Throwable == null) {
@@ -32,6 +28,21 @@ function getStackTraceStr(stacks: any) {
 function printStackTrace() {
     let stacks = getStackTrace();
     console.log(getStackTraceStr(stacks));
+}
+
+function printNStackTrace(stacks: any) {
+    try {
+        if (stacks?.$h) {
+            let a = [];
+            for (let i = 0; i < api.Array.getLength(stacks); i++) {
+                a.push(api.Array.get(stacks, i));
+            }
+            stacks = a;
+        }
+        console.log(getStackTraceStr(stacks));
+    } catch (e: any) {
+        console.error('failed to print stack trace', e.stack);
+    }
 }
 
 function castSelf(x: any) {
@@ -85,9 +96,9 @@ function getMainThread() {
 }
 
 export {
-    init,
     getStackTrace,
     printStackTrace,
+    printNStackTrace,
     castSelf,
     isInstance,
     catchJvmException,

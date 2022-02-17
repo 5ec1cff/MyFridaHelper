@@ -369,7 +369,7 @@ class ViewWrapper {
     }
 
     get vri(): any {
-        return this.attachInfo.value.mViewRootImpl.value;
+        return this.attachInfo.mViewRootImpl.value;
     }
 
     get bounds(): Rect {

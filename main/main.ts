@@ -1,9 +1,9 @@
 import * as util from '../frida-helper/util';
 import {LibView, ViewWrapper} from '../frida-helper/view';
+import { traceMethod } from '../frida-helper/tracer';
 
 Java.performNow(() => {
     console.log('loaded')
-    util.init();
     let global = new Function('return this')()
     global.LibView = LibView;
     global.util = util;
@@ -35,6 +35,13 @@ Java.performNow(() => {
     global.$ = LibView;
     global.ViewWrapper = ViewWrapper;
     global.cs = global._ = cs;
+    global.trace = traceMethod;
+
+    global.klass = {
+        Object: Java.use('java.lang.Object'),
+        String: Java.use('java.lang.String'),
+        Thread: Java.use('java.lang.Thread'),
+    };
 
     // handle my `waiting for debugger` xposed module
     try {
@@ -53,4 +60,3 @@ Java.performNow(() => {
 
     }
 })
-
