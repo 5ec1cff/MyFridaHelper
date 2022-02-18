@@ -8,6 +8,7 @@ const api: CM.ClassSet = {
     Thread: CM.Stub('java.lang.Thread'),
     Handler: CM.Stub('android.os.Handler'),
     MessageQueue: CM.Stub('android.os.MessageQueue'),
+    Throwable: CM.Stub('java.lang.Throwable'),
 }
 
 CM.register(api);
@@ -39,22 +40,25 @@ class TraceNode {
 }
 
 let hookCount = 0;
-let handlerHooked = false;
+let msgQHooked = false;
 let handlerRunning = false;
 
 const ThreadToMsg = api.HashMap.$new();
 const MsgToTraceNode = api.HashMap.$new();
 
-function startHookHandler() {
-    if (handlerHooked) return;
+function startHookMessageQueue() {
+    if (msgQHooked) return;
     console.warn('start hook handler');
     api.MessageQueue.enqueueMessage.implementation = function (msg: any, uptime: any) {
         if (handlerRunning) {
-            let node = new TraceNode();
-            node.stack = util.getStackTrace();
-            node.prev = MsgToTraceNode.get(ThreadToMsg.get(api.Thread.currentThread()));
-            // console.warn(node.obj);
-            MsgToTraceNode.put(msg, node.obj);
+            let stack = util.getStackTrace();
+            // only record msg from handler
+            if (stack?.length >= 1 && stack[1]?.getClassName() == 'android.os.Handler') {
+                let node = new TraceNode();
+                node.stack = stack;
+                node.prev = MsgToTraceNode.get(ThreadToMsg.get(api.Thread.currentThread()));
+                MsgToTraceNode.put(msg, node.obj);
+            }
         }
         return this.enqueueMessage(msg, uptime);
     }
@@ -63,15 +67,19 @@ function startHookHandler() {
         if (handlerRunning) {
             ThreadToMsg.put(api.Thread.currentThread(), msg);
         }
-        this.dispatchMessage(msg);
+        try {
+            this.dispatchMessage(msg);
+        } finally {
+            ThreadToMsg.remove(api.Thread.currentThread());
+        }
     }
 
-    handlerHooked = true;
+    msgQHooked = true;
     handlerRunning = true;
 }
 
-function unhookHandler() {
-    if (!handlerHooked) return;
+function stopHookMessageQueue() {
+    if (!msgQHooked) return;
     console.warn('stop hook handler');
     // api.MessageQueue.enqueueMessage.implementation = null;
     // api.Handler.dispatchMessage.implementation = null;
@@ -81,17 +89,17 @@ function unhookHandler() {
     MsgToTraceNode.clear();
 }
 
-function incHookHandler() {
+function incMsgQHook() {
     hookCount += 1;
     if (hookCount > 0) {
-        startHookHandler();
+        startHookMessageQueue();
     }
 }
 
-function decHookHandler() {
+function decMsgQHook() {
     hookCount -= 1;
     if (hookCount <= 0) {
-        unhookHandler();
+        stopHookMessageQueue();
     }
 }
 
@@ -113,10 +121,13 @@ function dumpObj(name: string, val: any, type: any) {
     console.log(`${name}: type=${type?.className}, realType=${isObj?'class:'+val.getClass()?.getName():('prim:'+typeof val)}, value=${value}`);
 }
 
-function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolean=true, printResult: boolean=true, printStack:boolean = true): Function {
+function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolean=true, printResult: boolean=true, printStack:boolean = true, printThis: boolean = true): Function {
     method.implementation = function (...args: any) {
         let threadSelf = api.Thread.currentThread();
         console.log(`method ${method?.holder?.$className||'<unknown>'}#${method?.methodName} called @ ${threadSelf}`);
+        if (printThis && this != null) {
+            dumpObj('this', this, {type: ""});
+        }
         if (printArgs) {
             let i = 0;
             for (let type of method.argumentTypes) {
@@ -124,12 +135,30 @@ function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolea
                 i++;
             }
         }
+        let ret, ex;
+        try {
+            ret = method.call(this, ...args);
+        } catch (e: any) {
+            if (e.$h) {
+                ex = e;
+            } else {
+                console.error("error occured", e.stack);
+            }
+        }
+        if (printResult) {
+            if (ret !== undefined) {
+                dumpObj(`result`, ret, method.returnType);
+            } else if (ex !== undefined) {
+                ex = Java.cast(ex, api.Throwable);
+                console.error("Java error occured while invoke original method", ex?.getClass()?.getName(), ex.getMessage());
+            }
+        }
         if (printStack) {
             util.printStackTrace();
             if (traceHandler) {
                 let trace = new TraceNode(MsgToTraceNode.get(ThreadToMsg.get(threadSelf)));
                 while (true) {
-                    console.log('===========from handler:');
+                    console.log('  (Handler message)');
                     util.printNStackTrace(trace.stack);
                     if (trace.prev == null) break;
                     trace = new TraceNode(trace.prev);
@@ -137,19 +166,20 @@ function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolea
             }
             console.log('');
         }
-        let ret = method.call(this, ...args);
-        if (printResult) {
-            dumpObj(`result`, ret, method.returnType);
+        
+        if (ex) {
+            throw ex;
+        } else {
+            return ret;
         }
-        return ret;
     }
     if (traceHandler) {
-        incHookHandler();
+        incMsgQHook();
     }
     return () => {
         method.implementation = null;
         if (traceHandler) {
-            decHookHandler();
+            decMsgQHook();
         }
     }
 }

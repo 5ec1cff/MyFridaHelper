@@ -20,7 +20,7 @@ function getStackTrace() {
 function getStackTraceStr(stacks: any) {
     let s = '';
     for (let i = 0; i < stacks.length; i++) {
-        s += `  ${stacks[i].toString()}\n`;
+        s += `  ${stacks[i].toString()}${i!=stacks.length-1?'\n':''}`;
     }
     return s;
 }
