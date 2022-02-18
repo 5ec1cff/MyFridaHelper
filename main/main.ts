@@ -43,6 +43,10 @@ Java.performNow(() => {
         Thread: Java.use('java.lang.Thread'),
     };
 
+    global.use = util.use;
+    global.android = util.use('android');
+    global.java = util.use('java');
+
     // handle my `waiting for debugger` xposed module
     try {
         let main = util.getMainThread(), uh = util.castSelf(main.getUncaughtExceptionHandler());
