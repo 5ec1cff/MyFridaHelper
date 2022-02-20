@@ -118,15 +118,30 @@ function dumpObj(name: string, val: any, type: any) {
             }
         }
     }
-    console.log(`${name}: type=${type?.className}, realType=${isObj?'class:'+val.getClass()?.getName():('prim:'+typeof val)}, value=${value}`);
+    console.log(`${name}: type=${type?.className}, realType=${isObj?'class:'+val?.getClass()?.getName():('prim:'+typeof val)}, value=${value}`);
 }
 
-function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolean=true, printResult: boolean=true, printStack:boolean = true, printThis: boolean = true): Function {
+interface TraceResult {
+    this?: any,
+    args?: any, 
+    result?: any,
+    exception?: any
+    stack?: any,
+    thread?: any
+}
+
+function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolean=true, printResult: boolean=true, printStack:boolean = true, printThis: boolean = true): any {
+    if (method._o.length > 1) {
+        throw new Error('overload method!');
+    }
+    let isStatic = method._o[0]._p[2] == 2; // static ?
+    let traceResult: Array<TraceResult> = [];
     method.implementation = function (...args: any) {
         let threadSelf = api.Thread.currentThread();
-        console.log(`method ${method?.holder?.$className||'<unknown>'}#${method?.methodName} called @ ${threadSelf}`);
-        if (printThis && this != null) {
-            dumpObj('this', this, {type: ""});
+        console.log(`[${traceResult.length}] method ${method?.holder?.$className||'<unknown>'}#${method?.methodName} called @ ${threadSelf}`);
+        if (printThis) {
+            if (!isStatic) dumpObj('this', this, {type: ""});
+            else console.log('(static method)');
         }
         if (printArgs) {
             let i = 0;
@@ -166,6 +181,13 @@ function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolea
             }
             console.log('');
         }
+
+        traceResult.push({
+            this: this && Java.retain(this) || null,
+            args: args.map((x: any) => x && x.$h && Java.retain(x) || x),
+            result: ret && ret.$h && Java.retain(ret) || null,
+            exception: ex && ex.$h && Java.retain(ex) || null,
+        })
         
         if (ex) {
             throw ex;
@@ -176,10 +198,14 @@ function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolea
     if (traceHandler) {
         incMsgQHook();
     }
-    return () => {
-        method.implementation = null;
-        if (traceHandler) {
-            decMsgQHook();
+    return {
+        method,
+        traceResult, 
+        unhook() {
+            method.implementation = null;
+            if (traceHandler) {
+                decMsgQHook();
+            }
         }
     }
 }

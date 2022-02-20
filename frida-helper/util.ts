@@ -5,6 +5,7 @@ const api: CM.ClassSet = {
     Throwable: CM.Stub('java.lang.Throwable'),
     Array: CM.Stub('java.lang.reflect.Array'),
     Thread: CM.Stub('java.lang.Thread'),
+    Modifier: CM.Stub('java.lang.reflect.Modifier'),
 }
 
 CM.register(api);
@@ -162,6 +163,25 @@ function use(v: any, enforceClass: boolean=false, enforcePackage: boolean=false)
     throw new Error('unknown type');
 }
 
+function dumpFields(obj: any, dumpSuper: boolean=false, dumpStatic: boolean=false, dumpRoot: boolean=false, asClass: any=null) {
+    if (asClass == null) asClass = obj.getClass();
+    console.log(`fields from ${asClass.getName()}`);
+    let fields = asClass.getDeclaredFields();
+    for (let f of fields) {
+        if (!(dumpStatic && api.Modifier.isStatic(f.getModifiers()))) continue;
+        f.setAccessible(true);
+        let val = f.get(obj);
+        let valType = val?.getClass()?.getName() || `(${typeof val})`
+        console.log(`field ${f.getType().getName()}/${f.getName()}=${valType}/${val}`);
+    }
+    if (dumpSuper) {
+        asClass = asClass.getSuperclass();
+        if (asClass == null ||
+           (asClass.getName() == 'java.lang.Object' && !dumpRoot)) return;
+        dumpFields(obj, dumpSuper, dumpRoot, asClass);
+    }
+}
+
 export {
     getStackTrace,
     printStackTrace,
@@ -174,5 +194,6 @@ export {
     getJavaThreads,
     getMainThread,
     isJavaWrapper,
-    use
+    use,
+    dumpFields
 }
