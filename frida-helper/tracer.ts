@@ -151,14 +151,52 @@ interface TraceResult {
     result?: any,
     exception?: any
     stack?: any,
-    thread?: any
+    thread?: any,
+}
+
+function dumpMethod(method: any) {
+    let result = '', l;
+    if (l = method._o?.length) {
+        result += `${l} overload methods\n`
+        for (let i = 0; i < l; i++) {
+            let m = method._o[i];
+            result += `[${i}] ${dumpMethod(m)}\n`;
+        }
+        return result;
+    }
+    if (method._p == null) throw new Error('Not a frida method');
+    let p = method?._p, name = p[0], klass = p[1]?.class?.getName(), isStatic = p[2] == 2, ret = p[4]?.className, args = (p[5]?.map((x: any) => x?.className)||['<unknown>']).join(', ');
+    return `${isStatic?'static ':''}${ret} ${klass}#${name} (${args})`;
 }
 
 function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolean=true, printResult: boolean=true, printStack:boolean = true, printThis: boolean = true): any {
-    if (method._o.length > 1) {
-        throw new Error('overload method!');
+    let l;
+    if (l = method._o?.length) {
+        console.warn(`Trace ${l} overload methods!`);
+        let hooked: any = [];
+        hooked.unhook = () => {
+            hooked.forEach((m: any) => {
+                m.unhook();
+            });
+        }
+        for (let i = 0; i < l; i++) {
+            let m = method._o[i], r;
+            try {
+                r = traceMethod(m, traceHandler, printArgs, printResult, printStack, printThis);
+            } catch (e: any) {
+                r = null;
+            }
+            if (r) {
+                console.warn(`hook ${dumpMethod(m)} success`);
+                hooked.push(r);
+            } else {
+                console.error(`hook ${dumpMethod(m)} failed`);
+            }
+        }
+        return hooked;
     }
-    let isStatic = method._o[0]._p[2] == 2; // static ?
+    if (method._p == null) throw new Error('Not a frida method');
+    let isStatic = method._p[2] == 2; // static ?
     let traceResult: Array<TraceResult> = [];
     method.implementation = function (...args: any) {
         let threadSelf = api.Thread.currentThread();
@@ -210,7 +248,7 @@ function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolea
             this: this && Java.retain(this) || null,
             args: args.map((x: any) => x && x.$h && Java.retain(x) || x),
             result: ret && ret.$h && Java.retain(ret) || null,
-            exception: ex && ex.$h && Java.retain(ex) || null,
+            exception: ex && ex.$h && Java.retain(ex) || null
         })
 
         if (traceHandler) {
@@ -234,10 +272,14 @@ function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolea
             if (traceHandler) {
                 decMsgQHook();
             }
+        },
+        toJSON() {
+            return `<TraceResult (${traceResult.length}) for method ${dumpMethod(method)}>`
         }
     }
 }
 
 export {
-    traceMethod
+    traceMethod,
+    dumpMethod
 }
