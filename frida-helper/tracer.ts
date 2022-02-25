@@ -4,6 +4,7 @@ import * as CM from './class-manager'
 const api: CM.ClassSet = {
     Object: CM.Stub("java.lang.Object"),
     HashMap: CM.Stub('java.util.HashMap'),
+    HashSet: CM.Stub('java.util.HashSet'),
     Array: CM.Stub('java.lang.reflect.Array'),
     Thread: CM.Stub('java.lang.Thread'),
     Handler: CM.Stub('android.os.Handler'),
@@ -45,18 +46,32 @@ let handlerRunning = false;
 
 const ThreadToMsg = api.HashMap.$new();
 const MsgToTraceNode = api.HashMap.$new();
+const ThreadTraceNodeNotUsed = api.HashSet.$new();
 
 function startHookMessageQueue() {
     if (msgQHooked) return;
+    ThreadToMsg.clear();
+    MsgToTraceNode.clear();
+    ThreadTraceNodeNotUsed.clear();
     console.warn('start hook handler');
     api.MessageQueue.enqueueMessage.implementation = function (msg: any, uptime: any) {
         if (handlerRunning) {
             let stack = util.getStackTrace();
             // only record msg from handler
             if (stack?.length >= 1 && stack[1]?.getClassName() == 'android.os.Handler') {
+                // create trace node
                 let node = new TraceNode();
-                node.stack = stack;
-                node.prev = MsgToTraceNode.get(ThreadToMsg.get(api.Thread.currentThread()));
+                node.stack = stack; // take snapshot of stack trace
+                // if current thread was bound to a message
+                // that we've already taken snapshot, then
+                // make it link to current node.
+                const thread = api.Thread.currentThread();
+                let oldMsg = ThreadToMsg.get(thread);
+                if (oldMsg != null) {
+                    ThreadTraceNodeNotUsed.remove(thread);
+                }
+                node.prev = MsgToTraceNode.get(oldMsg);
+                // bind current message to trace node
                 MsgToTraceNode.put(msg, node.obj);
             }
         }
@@ -64,13 +79,21 @@ function startHookMessageQueue() {
     }
 
     api.Handler.dispatchMessage.implementation = function (msg: any) {
+        const thread = api.Thread.currentThread();
         if (handlerRunning) {
-            ThreadToMsg.put(api.Thread.currentThread(), msg);
+            // bind current thread to message, for our tracer hook
+            ThreadToMsg.put(thread, msg);
+            ThreadTraceNodeNotUsed.add(thread);
         }
         try {
             this.dispatchMessage(msg);
         } finally {
-            ThreadToMsg.remove(api.Thread.currentThread());
+            ThreadToMsg.remove(thread);
+            if (ThreadTraceNodeNotUsed.contains(thread)) {
+                // our TraceNode hasn't been used. release it.
+                MsgToTraceNode.remove(msg);
+                ThreadTraceNodeNotUsed.remove(thread);
+            }
         }
     }
 
@@ -87,6 +110,7 @@ function stopHookMessageQueue() {
     handlerRunning = false;
     ThreadToMsg.clear();
     MsgToTraceNode.clear();
+    ThreadTraceNodeNotUsed.clear();
 }
 
 function incMsgQHook() {
@@ -173,7 +197,7 @@ function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolea
             if (traceHandler) {
                 let trace = new TraceNode(MsgToTraceNode.get(ThreadToMsg.get(threadSelf)));
                 while (true) {
-                    console.log('  (Handler message)');
+                    console.warn('  <Message dispatch (async)>');
                     util.printNStackTrace(trace.stack);
                     if (trace.prev == null) break;
                     trace = new TraceNode(trace.prev);
@@ -188,6 +212,10 @@ function traceMethod(method: any, traceHandler: boolean=false, printArgs: boolea
             result: ret && ret.$h && Java.retain(ret) || null,
             exception: ex && ex.$h && Java.retain(ex) || null,
         })
+
+        if (traceHandler) {
+            ThreadTraceNodeNotUsed.remove(threadSelf);
+        }
         
         if (ex) {
             throw ex;
